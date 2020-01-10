@@ -25,3 +25,5 @@ Standalone tests: `python3 -m unittest -v`. Git author dates are deliberately as
 Use `--fade-in SECONDS` and `--fade-out SECONDS` for global linear volume ramps. Both durations must be finite, nonnegative, and no longer than the generated audio. Overlapping fades use the lower gain; stereo channels share the same ramp. Defaults preserve the original PCM bytes and frame count.
 
 Use `--transpose SEMITONES` with an integer from -24 to 24 to shift both voices together; rests stay silent. Melody and harmony pitches at or above the Nyquist limit are rejected before audio allocation. The default zero shift preserves PCM output.
+
+Use `--sequence-file score.txt` to read whitespace-separated tokens from a strict UTF-8 file of at most64KiB. It cannot be combined with a positional sequence. Invalid, oversized, or missing inputs are rejected before output creation.

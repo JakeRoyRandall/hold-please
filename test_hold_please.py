@@ -83,5 +83,17 @@ class HoldPleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError): hold_please.samples(hold_please.parse_sequence("B7:1"), 120, harmony=12, transpose=24)
         data = hold_please.samples(hold_please.parse_sequence("A6:0.1"), 120, harmony=12, transpose=24)
         self.assertGreater(len(data), 0)
+    def test_sequence_file_utf8_bounds_and_conflicts(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "notes.txt")
+            with open(path, "w", encoding="utf-8") as f: f.write("C4:0.1\nR:0.1\nD4:0.1")
+            out = os.path.join(d, "file.wav"); hold_please.main(["--sequence-file", path, "-o", out]); self.assertTrue(os.path.getsize(out) > 44)
+            with open(path, "wb") as f: f.write(b"C4:1\n\xff")
+            self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", path, "-o", os.path.join(d, "bad.wav")])
+            with open(path, "wb") as f: f.write(b"C4:1" * 20000)
+            self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", path, "-o", os.path.join(d, "big.wav")])
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--sequence-file", path, "-o", os.path.join(d, "conflict.wav")])
+            self.assertRaises(SystemExit, hold_please.main, [hold_please.PRESET, "--sequence-file", path, "-o", os.path.join(d, "preset-conflict.wav")])
+            self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", os.path.join(d, "missing"), "-o", os.path.join(d, "missing.wav")])
 
 if __name__ == "__main__": unittest.main()

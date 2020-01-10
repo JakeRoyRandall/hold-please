@@ -98,7 +98,8 @@ def write_wav(path, data, force=False, channels=1):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Generate gentle music for a meeting hold.")
-    p.add_argument("sequence", nargs="?", default=PRESET, help="tokens such as C4:1 R:0.5 E4:2")
+    p.add_argument("sequence", nargs="?", default=None, help="tokens such as C4:1 R:0.5 E4:2")
+    p.add_argument("--sequence-file", help="read note/rest tokens as strict UTF-8 from a file (max 64 KiB)")
     p.add_argument("-o", "--output", default="hold-please.wav"); p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
     p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
     p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
@@ -107,9 +108,17 @@ def main(argv=None):
     p.add_argument("--transpose", type=int, default=0)
     a = p.parse_args(argv)
     try:
+        if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
+        sequence_text = a.sequence if a.sequence is not None else PRESET
+        if a.sequence_file:
+            with open(a.sequence_file, "rb") as source:
+                raw = source.read(65537)
+            if len(raw) > 65536: raise ValueError("sequence file exceeds 64 KiB")
+            try: sequence_text = raw.decode("utf-8")
+            except UnicodeDecodeError as error: raise ValueError("sequence file is not valid UTF-8") from error
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
+        write_wav(a.output, samples(parse_sequence(sequence_text), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 
