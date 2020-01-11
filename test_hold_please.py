@@ -95,5 +95,12 @@ class HoldPleaseTests(unittest.TestCase):
             self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--sequence-file", path, "-o", os.path.join(d, "conflict.wav")])
             self.assertRaises(SystemExit, hold_please.main, [hold_please.PRESET, "--sequence-file", path, "-o", os.path.join(d, "preset-conflict.wav")])
             self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", os.path.join(d, "missing"), "-o", os.path.join(d, "missing.wav")])
+    def test_repeat_expands_frames_and_preserves_rests(self):
+        seq = hold_please.parse_sequence("C4:0.1 R:0.1")
+        self.assertEqual(len(hold_please.repeat_sequence(seq, 3)), 6)
+        self.assertEqual(len(hold_please.samples(hold_please.repeat_sequence(seq, 3), 120)), 3 * len(hold_please.samples(seq, 120)))
+        self.assertRaises(ValueError, hold_please.repeat_sequence, seq, 0)
+        self.assertRaises(ValueError, hold_please.repeat_sequence, hold_please.parse_sequence("C4:120"), 2)
+        self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--repeat", "17", "-o", "/tmp/repeat.wav"])
 
 if __name__ == "__main__": unittest.main()

@@ -44,6 +44,12 @@ def swing_sequence(sequence, swing):
         adjusted[i + 1] = (sequence[i + 1][0], second - transfer)
     return adjusted
 
+def repeat_sequence(sequence, repeat):
+    if not isinstance(repeat, int) or isinstance(repeat, bool) or not 1 <= repeat <= 16: raise ValueError("repeat must be an integer from 1 to 16")
+    expanded = list(sequence) * repeat
+    if sum(duration for _, duration in expanded) > MAX_BEATS: raise ValueError("repeated sequence exceeds 120 beats")
+    return expanded
+
 def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
@@ -106,6 +112,7 @@ def main(argv=None):
     p.add_argument("--swing", type=float, default=None, help="redistribute consecutive pair durations by 0..0.75")
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     p.add_argument("--transpose", type=int, default=0)
+    p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
     a = p.parse_args(argv)
     try:
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
@@ -118,7 +125,8 @@ def main(argv=None):
             except UnicodeDecodeError as error: raise ValueError("sequence file is not valid UTF-8") from error
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
-        write_wav(a.output, samples(parse_sequence(sequence_text), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
+        score = repeat_sequence(parse_sequence(sequence_text), a.repeat)
+        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 
