@@ -50,11 +50,12 @@ def repeat_sequence(sequence, repeat):
     if sum(duration for _, duration in expanded) > MAX_BEATS: raise ValueError("repeated sequence exceeds 120 beats")
     return expanded
 
-def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0):
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
     if not isinstance(transpose, int) or isinstance(transpose, bool) or not -24 <= transpose <= 24: raise ValueError("transpose must be an integer from -24 to 24")
+    if not math.isfinite(gain) or not 0 <= gain <= 1: raise ValueError("gain must be finite and between 0 and 1")
     for note, _ in sequence:
         if note != "R" and frequency(note, transpose) >= RATE / 2: raise ValueError("transposed note reaches the Nyquist limit")
         if note != "R" and harmony is not None and frequency(note, transpose + harmony) >= RATE / 2: raise ValueError("transposed harmony reaches the Nyquist limit")
@@ -87,7 +88,7 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0
                 else: left = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)); right = 0.0
             gain_in = 1.0 if fade_in_frames == 0 else min(1.0, absolute / max(1, fade_in_frames))
             gain_out = 1.0 if fade_out_frames == 0 else min(1.0, (total_frames - 1 - absolute) / max(1, fade_out_frames))
-            gain = min(gain_in, gain_out); left *= gain; right *= gain
+            envelope = min(gain_in, gain_out); left *= envelope * gain; right *= envelope * gain
             out.extend(struct.pack("<h", round(left * 32767)))
             if stereo: out.extend(struct.pack("<h", round(right * 32767)))
             absolute += 1
@@ -113,6 +114,7 @@ def main(argv=None):
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     p.add_argument("--transpose", type=int, default=0)
     p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
+    p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1")
     a = p.parse_args(argv)
     try:
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
@@ -126,7 +128,7 @@ def main(argv=None):
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
         score = repeat_sequence(parse_sequence(sequence_text), a.repeat)
-        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
+        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 

@@ -102,5 +102,12 @@ class HoldPleaseTests(unittest.TestCase):
         self.assertRaises(ValueError, hold_please.repeat_sequence, seq, 0)
         self.assertRaises(ValueError, hold_please.repeat_sequence, hold_please.parse_sequence("C4:120"), 2)
         self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--repeat", "17", "-o", "/tmp/repeat.wav"])
+    def test_gain_scales_mono_stereo_and_validates(self):
+        seq = hold_please.parse_sequence("C4:0.2")
+        full = hold_please.samples(seq, 120); half = hold_please.samples(seq, 120, gain=.5)
+        full_vals = struct.unpack("<%dh" % (len(full)//2), full); half_vals = struct.unpack("<%dh" % (len(half)//2), half)
+        self.assertGreater(max(map(abs, full_vals)), max(map(abs, half_vals))); self.assertEqual(hold_please.samples(seq, 120, gain=0), b"\0" * len(full))
+        stereo = hold_please.samples(seq, 120, harmony=7, stereo=True, gain=.5); self.assertGreater(max(map(abs, struct.unpack("<%dh" % (len(stereo)//2), stereo))), 0)
+        for bad in (-.01, 1.01, float("nan"), float("inf")): self.assertRaises(ValueError, hold_please.samples, seq, 120, gain=bad)
 
 if __name__ == "__main__": unittest.main()

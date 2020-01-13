@@ -29,3 +29,5 @@ Use `--transpose SEMITONES` with an integer from -24 to 24 to shift both voices 
 Use `--sequence-file score.txt` to read whitespace-separated tokens from a strict UTF-8 file of at most64KiB. It cannot be combined with a positional sequence. Invalid, oversized, or missing inputs are rejected before output creation.
 
 Use `--repeat N` for 1 to16 score repetitions. The expanded score must fit the120-beat and10MB output limits. Swing pairs run across the expanded score, while fades span the entire output.
+
+Use `--gain 0.5` to attenuate every channel before PCM quantization. Gain must be finite and between0 and1; zero produces silence and one preserves the original output. Gain combines with global fades.
