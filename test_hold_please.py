@@ -2,6 +2,17 @@ import os, struct, tempfile, unittest, wave
 import hold_please
 
 class HoldPleaseTests(unittest.TestCase):
+    def test_swing_conserves_pair_frames_rests_and_odd_last(self):
+        seq = hold_please.parse_sequence("C4:1 R:0.5 G4:0.25 R:0.75 E4:0.1")
+        swung = hold_please.swing_sequence(seq, .75)
+        self.assertAlmostEqual(sum(x[1] for x in seq), sum(x[1] for x in swung))
+        beat = 60 / 120 * hold_please.RATE
+        original = [round(x[1] * beat) for x in seq]; data = hold_please.samples(seq, 120, swing=.75)
+        self.assertEqual(len(data)//2, sum(original)); self.assertEqual(swung[-1], seq[-1])
+        rest_start = round((swung[0][1]) * beat); rest_end = rest_start + round(swung[1][1] * beat)
+        vals = struct.unpack("<%dh" % (len(data)//2), data); self.assertEqual(max(map(abs, vals[rest_start:rest_end])), 0)
+        self.assertEqual(hold_please.samples(seq, 120), hold_please.samples(seq, 120, swing=0))
+
     def test_harmony_changes_pcm_and_stays_bounded(self):
         seq = hold_please.parse_sequence("C4:0.2 R:0.1 G4:0.2")
         plain = hold_please.samples(seq, 120); harmony = hold_please.samples(seq, 120, 7)
@@ -45,5 +56,13 @@ class HoldPleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError): hold_please.samples([("C4",1)],0)
     def test_overwrite_refused(self):
         with tempfile.NamedTemporaryFile() as f: self.assertRaises(FileExistsError, hold_please.write_wav, f.name, b"", False)
+    def test_swing_validation_and_cli_outputs(self):
+        for value in (-0.01, .76, float("nan"), float("inf")): self.assertRaises(ValueError, hold_please.samples, hold_please.parse_sequence("C4:1 D4:1"), 120, swing=value)
+        with tempfile.TemporaryDirectory() as d:
+            mono = os.path.join(d, "mono.wav"); stereo = os.path.join(d, "stereo.wav")
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--swing", ".8", "-o", mono])
+            hold_please.main(["C4:1 D4:1", "--swing", ".5", "-o", mono])
+            hold_please.main(["C4:1 D4:1", "--swing", ".5", "--harmony", "7", "--stereo", "-o", stereo])
+            with wave.open(stereo, "rb") as w: self.assertEqual(w.getnchannels(), 2)
 
 if __name__ == "__main__": unittest.main()

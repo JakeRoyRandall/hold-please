@@ -19,3 +19,5 @@ The generator accepts notes C–B with optional sharps/flats and octaves 2–7, 
 `--stereo` requires `--harmony` and writes true two-channel PCM: melody on the left and the harmony on the right. Stereo byte size is included in the same 10 MB preflight bound.
 
 Standalone tests: `python3 -m unittest -v`. Git author dates are deliberately assigned for contribution-calendar artwork; committer timestamps record actual September2026 creation.
+
+`--swing S` redistributes each consecutive pair by moving up to `S` times the shorter duration from the second item to the first (`0..0.75`). Pair totals and total audio frames remain constant, rests participate like notes, and an odd final item is unchanged. The default without `--swing` produces the original bytes.

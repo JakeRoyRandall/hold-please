@@ -34,12 +34,26 @@ def frequency(note):
     midi = 12 * (int(m.group(3)) + 1) + base + accidental
     return 440.0 * 2 ** ((midi - 69) / 12)
 
-def samples(sequence, tempo, harmony=None, stereo=False):
+def swing_sequence(sequence, swing):
+    if not 0 <= swing <= .75: raise ValueError("swing must be between 0 and 0.75")
+    adjusted = list(sequence)
+    for i in range(0, len(sequence) - 1, 2):
+        first, second = sequence[i][1], sequence[i + 1][1]
+        transfer = min(first, second) * swing
+        adjusted[i] = (sequence[i][0], first + transfer)
+        adjusted[i + 1] = (sequence[i + 1][0], second - transfer)
+    return adjusted
+
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
     beat = 60.0 / tempo
+    source_counts = [round(beats * beat * RATE) for _, beats in sequence]
+    sequence = swing_sequence(sequence, swing) if swing is not None and swing != 0 else sequence
     frame_counts = [round(beats * beat * RATE) for _, beats in sequence]
+    if swing is not None and swing != 0:
+        for i in range(0, len(frame_counts) - 1, 2): frame_counts[i + 1] = source_counts[i] + source_counts[i + 1] - frame_counts[i]
     if any(n < 1 for n in frame_counts): raise ValueError("each duration must produce at least one audio frame")
     channels = 2 if stereo else 1
     if sum(frame_counts) * 2 * channels + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
@@ -75,10 +89,12 @@ def main(argv=None):
     p.add_argument("-o", "--output", default="hold-please.wav"); p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
     p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
     p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
+    p.add_argument("--swing", type=float, default=None, help="redistribute consecutive pair durations by 0..0.75")
     a = p.parse_args(argv)
     try:
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo), a.force, 2 if a.stereo else 1)
+        if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
+        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 
