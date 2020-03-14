@@ -2,6 +2,31 @@ import json, os, struct, subprocess, sys, tempfile, unittest, wave
 import hold_please
 
 class HoldPleaseTests(unittest.TestCase):
+    def test_reverse_preserves_event_data_and_repeat_order(self):
+        sequence = hold_please.parse_sequence("C4:0.2 R:0.1 G4:0.3")
+        self.assertEqual(hold_please.reverse_sequence(sequence), [("G4", 0.3), ("R", 0.1), ("C4", 0.2)])
+        self.assertEqual(hold_please.repeat_sequence(hold_please.reverse_sequence(sequence), 2), [("G4", 0.3), ("R", 0.1), ("C4", 0.2)] * 2)
+        self.assertEqual(len(hold_please.samples(sequence, 120)), len(hold_please.samples(hold_please.reverse_sequence(sequence), 120)))
+
+    def test_reverse_cli_and_inspect_metadata(self):
+        with tempfile.TemporaryDirectory() as d:
+            output = os.path.join(d, "reverse.wav")
+            hold_please.main(["C4:0.2 R:0.1 G4:0.3", "--reverse", "--repeat", "2", "--tempo", "120", "-o", output])
+            with wave.open(output, "rb") as wav: self.assertEqual(wav.getnframes(), round((0.2 + 0.1 + 0.3) * 2 * 60 / 120 * hold_please.RATE))
+            result = subprocess.run([sys.executable, "hold_please.py", "C4:0.2 R:0.1 G4:0.3", "--reverse", "--repeat", "2", "--tempo", "120", "--inspect-json"], capture_output=True, text=True, check=True)
+            metadata = json.loads(result.stdout); self.assertEqual(metadata["frames"], round((0.2 + 0.1 + 0.3) * 2 * 60 / 120 * hold_please.RATE))
+
+    def test_reverse_sequence_file_and_generated_preset(self):
+        with tempfile.TemporaryDirectory() as d:
+            sequence_path = os.path.join(d, "score.txt")
+            output = os.path.join(d, "file-reverse.wav")
+            with open(sequence_path, "w", encoding="utf-8") as f:
+                f.write("C4:0.2 R:0.1 G4:0.3\n")
+            hold_please.main(["--sequence-file", sequence_path, "--reverse", "--tempo", "120", "-o", output])
+            with wave.open(output, "rb") as wav:
+                self.assertEqual(wav.getnframes(), len(hold_please.samples(hold_please.reverse_sequence(hold_please.parse_sequence("C4:0.2 R:0.1 G4:0.3")), 120)) // 2)
+            preset = hold_please.parse_sequence(hold_please.PRESET)
+            self.assertNotEqual(hold_please.samples(preset, 120), hold_please.samples(hold_please.reverse_sequence(preset), 120))
     def test_swing_conserves_pair_frames_rests_and_odd_last(self):
         seq = hold_please.parse_sequence("C4:1 R:0.5 G4:0.25 R:0.75 E4:0.1")
         swung = hold_please.swing_sequence(seq, .75)

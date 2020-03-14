@@ -51,6 +51,9 @@ def repeat_sequence(sequence, repeat):
     if sum(duration for _, duration in expanded) > MAX_BEATS: raise ValueError("repeated sequence exceeds 120 beats")
     return expanded
 
+def reverse_sequence(sequence):
+    return list(reversed(sequence))
+
 def preflight(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0, rate=RATE):
     if rate not in (22050, 44100, 48000): raise ValueError("sample rate must be 22050, 44100, or 48000")
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
@@ -140,6 +143,7 @@ def main(argv=None):
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     p.add_argument("--transpose", type=int, default=0)
     p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
+    p.add_argument("--reverse", action="store_true", help="play score events in reverse order")
     p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--sample-rate", type=int, choices=(22050, 44100, 48000), default=RATE); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing"); p.add_argument("--inspect-json", action="store_true", help="print WAV metadata as JSON without rendering or writing")
     p.add_argument("--normalize", action="store_true", help="normalize non-silent PCM to the available 16-bit peak")
     a = p.parse_args(argv)
@@ -158,7 +162,9 @@ def main(argv=None):
             sequence_text = " ".join(line for line in sequence_text.splitlines() if line.strip() and not line.lstrip().startswith("#"))
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
-        score = repeat_sequence(parse_sequence(sequence_text), a.repeat)
+        parsed_sequence = parse_sequence(sequence_text)
+        if a.reverse: parsed_sequence = reverse_sequence(parsed_sequence)
+        score = repeat_sequence(parsed_sequence, a.repeat)
         if a.inspect or a.inspect_json:
             _, frames, channels, peak = preflight(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate)
             if a.inspect_json:

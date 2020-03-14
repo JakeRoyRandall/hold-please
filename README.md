@@ -5,6 +5,7 @@ This small Python 3 standard-library tool turns a bounded note/rest sequence int
 Created September 2026 retrospectively for the calendar garden; it is not historical 2020 work. The calendar author is disclosed as the author of this retrospective exercise, not as a historical attribution.
 
 ```sh
+cd app
 python3 hold_please.py --output ../evidence/hold-please.wav
 python3 hold_please.py 'C4:1 R:0.5 G4:1' --tempo 110 --output ../evidence/custom.wav
 python3 hold_please.py 'C4:1 R:0.5 G4:1' --harmony 7 --output ../evidence/harmony.wav
@@ -12,34 +13,32 @@ python3 hold_please.py 'C4:1 R:0.5 G4:1' --harmony 7 --stereo --output ../eviden
 python3 -m unittest -v test_hold_please.py
 ```
 
-The generator accepts notes C–B with optional sharps/flats and octaves 2–7, rests, positive finite beat lengths, and tempos from 40–240 BPM. It caps sequences at 120 beats and output at 10 MB, and refuses to overwrite an existing file unless `--force` is supplied. It does not synthesize speech, normalize loudness, or promise studio quality.
+The generator accepts notes C–B with optional sharps/flats and octaves 2–7, rests, positive finite beat lengths, and tempos from 40–240 BPM. It caps sequences at 120 beats and output at 10 MB, and refuses to overwrite an existing file unless `--force` is supplied. It does not synthesize speech or promise studio quality.
 
 `--harmony N` mixes a second voice at a bounded integer offset from -12 to 12 semitones. It preserves rests and uses balanced gains so the output remains within 16-bit PCM limits; without the flag, the original mono output is unchanged.
 
 `--stereo` requires `--harmony` and writes true two-channel PCM: melody on the left and the harmony on the right. Stereo byte size is included in the same 10 MB preflight bound.
 
-Standalone tests: `python3 -m unittest -v`. Git author dates are deliberately assigned for contribution-calendar artwork; committer timestamps record actual September2026 creation.
-
 `--swing S` redistributes each consecutive pair by moving up to `S` times the shorter duration from the second item to the first (`0..0.75`). Pair totals and total audio frames remain constant, rests participate like notes, and an odd final item is unchanged. The default without `--swing` produces the original bytes.
 
-Use `--fade-in SECONDS` and `--fade-out SECONDS` for global linear volume ramps. Both durations must be finite, nonnegative, and no longer than the generated audio. Overlapping fades use the lower gain; stereo channels share the same ramp. Defaults preserve the original PCM bytes and frame count.
+`--fade-in SECONDS` and `--fade-out SECONDS` apply smooth global ramps to the rendered PCM, including both stereo channels. Values are finite, nonnegative, and cannot exceed the generated duration; overlapping ramps use the lower gain. Frame count and the default no-fade bytes are unchanged.
 
-Use `--transpose SEMITONES` with an integer from -24 to 24 to shift both voices together; rests stay silent. Melody and harmony pitches at or above the Nyquist limit are rejected before audio allocation. The default zero shift preserves PCM output.
+`--transpose N` shifts both melody and harmony by an integer number of semitones from `-24` to `24`; rests remain silent. The default `0` leaves the original bytes unchanged.
 
-Use `--sequence-file score.txt` to read whitespace-separated tokens from a strict UTF-8 file of at most64KiB. It cannot be combined with a positional sequence. Invalid, oversized, or missing inputs are rejected before output creation.
+Use `--sequence-file PATH` instead of the positional sequence to read whitespace-separated note/rest tokens across multiple lines. Blank lines and whole-line `#` comments are ignored (inline comments remain invalid). Files must be valid UTF‑8 and no larger than 64 KiB; the option cannot be combined with a positional sequence. Invalid, oversized, missing, or undecodable files fail before output creation.
 
-Use `--repeat N` for 1 to16 score repetitions. The expanded score must fit the120-beat and10MB output limits. Swing pairs run across the expanded score, while fades span the entire output.
+`--repeat N` expands the parsed score `N` times (`1..16`) before swing, fades, harmony, and rendering. The expanded score must still fit the 120-beat and 10 MB limits; `N=1` is the default byte-identical behavior.
 
-Use `--gain 0.5` to attenuate every channel before PCM quantization. Gain must be finite and between0 and1; zero produces silence and one preserves the original output. Gain combines with global fades.
+`--reverse` reverses the parsed note/rest events before `--repeat`, preserving each event's pitch and duration. It changes event order only; it does not reverse the generated waveform. Inspect metadata uses the same reversed and repeated plan.
 
-Use `--inspect` to report planned duration, frames, channels, estimated WAV size, and highest voice frequency without PCM allocation or file output. Inspection shares the same validation and frame planning as rendering, including repeats, swing, fades, gain, and transposition.
+`--gain G` scales every output channel from `0` to `1` before 16-bit quantization. The default `1.0` preserves existing bytes; `0` is silent and all values are finite and bounded.
 
-Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillator pitch, envelopes, WAV headers, and Nyquist validation use the selected rate. Inspect output includes sample_rate.
+`--normalize` optionally peak-normalizes rendered PCM after gain and fades. Non-silent output is scaled to its greatest available 16-bit magnitude without clipping; silence remains silent. Without this flag, output remains byte-identical.
 
-`--normalize` scales the rendered non-silent PCM to the 16-bit peak after gain and fades. Stereo channels share one scale factor to preserve their balance. Silence stays silent; without the option output is unchanged. Normalization overrides absolute gain loudness, so use gain zero for silence.
+`--inspect` prints duration, frame count, channel count, estimated WAV bytes, and peak frequency using the same repeat/swing timing plan, then exits without allocating PCM or writing the requested output.
 
-`--inspect-json` prints numeric metadata as JSON without rendering PCM or creating a file: sample_rate, duration_seconds, frames, channels, bytes (including WAV header), peak_frequency_hz. It is mutually exclusive with text `--inspect`.
+`--inspect-json` emits the equivalent metadata as JSON with `sample_rate`, `duration_seconds`, `frames`, `channels`, `bytes`, and `peak_frequency_hz` keys. It performs no rendering or file write and cannot be combined with `--inspect`.
 
-Sequence files may include blank lines and whole-line # comments, including Unicode comments. Inline comments remain invalid. Files retain the 64 KiB UTF-8 limit; comments-only input is rejected as an empty score.
+`--sample-rate` accepts `22050`, `44100`, or `48000` Hz; the default `44100` preserves existing output. Frame planning, WAV headers, fade timing, and Nyquist validation all use the selected rate.
 
-`--stdout` writes binary WAV to stdout with confirmation on stderr. It cannot combine with explicit output paths, --force, or either inspect mode. Broken pipes exit quietly. Default file output remains hold-please.wav.
+`--stdout` writes a binary WAV stream to stdout for piping; its success message goes to stderr. It cannot be combined with `-o/--output` or `--force`. Without `--stdout`, the default output file remains `hold-please.wav`.
