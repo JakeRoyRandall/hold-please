@@ -2,6 +2,16 @@ import os, struct, tempfile, unittest, wave
 import hold_please
 
 class HoldPleaseTests(unittest.TestCase):
+    def test_harmony_changes_pcm_and_stays_bounded(self):
+        seq = hold_please.parse_sequence("C4:0.2 R:0.1 G4:0.2")
+        plain = hold_please.samples(seq, 120); harmony = hold_please.samples(seq, 120, 7)
+        self.assertNotEqual(plain, harmony)
+        vals = struct.unpack("<%dh" % (len(harmony)//2), harmony)
+        self.assertLessEqual(max(map(abs, vals)), 32767)
+        rest_start = round(0.2 * 60 / 120 * hold_please.RATE)
+        rest_end = rest_start + round(0.1 * 60 / 120 * hold_please.RATE)
+        self.assertEqual(max(map(abs, vals[rest_start:rest_end])), 0)
+
     def test_wav_properties_peak_and_rest(self):
         data = hold_please.samples(hold_please.parse_sequence("C4:0.1 R:0.1"), 120)
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
@@ -13,6 +23,7 @@ class HoldPleaseTests(unittest.TestCase):
     def test_rejected_notes_tempo_and_long_input(self):
         for bad in ("H4:1", "C8:1", "C4:0", "C4:nan"): self.assertRaises(ValueError, hold_please.parse_sequence, bad)
         self.assertRaises(ValueError, hold_please.parse_sequence, "C4:121"); self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--tempo", "300"])
+        self.assertRaises(ValueError, hold_please.samples, [("C4", 1)], 120, 13)
     def test_enharmonics_and_preflight(self):
         self.assertEqual(hold_please.frequency("B#4"), hold_please.frequency("C5"))
         self.assertEqual(hold_please.frequency("Cb4"), hold_please.frequency("B3"))

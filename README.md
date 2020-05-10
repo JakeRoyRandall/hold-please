@@ -7,9 +7,12 @@ Created September 2026 retrospectively for the calendar garden; it is not histor
 ```sh
 python3 hold_please.py --output ../evidence/hold-please.wav
 python3 hold_please.py 'C4:1 R:0.5 G4:1' --tempo 110 --output ../evidence/custom.wav
+python3 hold_please.py 'C4:1 R:0.5 G4:1' --harmony 7 --output ../evidence/harmony.wav
 python3 -m unittest -v test_hold_please.py
 ```
 
 The generator accepts notes C–B with optional sharps/flats and octaves 2–7, rests, positive finite beat lengths, and tempos from 40–240 BPM. It caps sequences at 120 beats and output at 10 MB, and refuses to overwrite an existing file unless `--force` is supplied. It does not synthesize speech, normalize loudness, or promise studio quality.
+
+`--harmony N` mixes a second voice at a bounded integer offset from -12 to 12 semitones. It preserves rests and uses balanced gains so the output remains within 16-bit PCM limits; without the flag, the original mono output is unchanged.
 
 Standalone tests: `python3 -m unittest -v`. Git author dates are deliberately assigned for contribution-calendar artwork; committer timestamps record actual September2026 creation.

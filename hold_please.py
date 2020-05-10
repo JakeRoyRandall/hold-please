@@ -34,8 +34,9 @@ def frequency(note):
     midi = 12 * (int(m.group(3)) + 1) + base + accidental
     return 440.0 * 2 ** ((midi - 69) / 12)
 
-def samples(sequence, tempo):
+def samples(sequence, tempo, harmony=None):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
+    if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     beat = 60.0 / tempo
     frame_counts = [round(beats * beat * RATE) for _, beats in sequence]
     if any(n < 1 for n in frame_counts): raise ValueError("each duration must produce at least one audio frame")
@@ -47,7 +48,9 @@ def samples(sequence, tempo):
             if f == 0: value = 0.0
             else:
                 env = min(1.0, i / max(1, attack), (n - i) / max(1, release))
-                value = 0.22 * env * math.sin(2 * math.pi * f * i / RATE)
+                primary = math.sin(2 * math.pi * f * i / RATE)
+                if harmony is None or harmony == 0: value = 0.22 * env * primary
+                else: value = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE))
             out.extend(struct.pack("<h", round(value * 32767)))
     return bytes(out)
 
@@ -64,10 +67,11 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Generate gentle music for a meeting hold.")
     p.add_argument("sequence", nargs="?", default=PRESET, help="tokens such as C4:1 R:0.5 E4:2")
     p.add_argument("-o", "--output", default="hold-please.wav"); p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
+    p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
     a = p.parse_args(argv)
     try:
-        if not math.isfinite(a.tempo) or not 40 <= a.tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo), a.force)
+        if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
+        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony), a.force)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 
