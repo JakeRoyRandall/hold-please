@@ -34,44 +34,51 @@ def frequency(note):
     midi = 12 * (int(m.group(3)) + 1) + base + accidental
     return 440.0 * 2 ** ((midi - 69) / 12)
 
-def samples(sequence, tempo, harmony=None):
+def samples(sequence, tempo, harmony=None, stereo=False):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
+    if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
     beat = 60.0 / tempo
     frame_counts = [round(beats * beat * RATE) for _, beats in sequence]
     if any(n < 1 for n in frame_counts): raise ValueError("each duration must produce at least one audio frame")
-    if sum(frame_counts) * 2 + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
+    channels = 2 if stereo else 1
+    if sum(frame_counts) * 2 * channels + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
     out = bytearray()
     for (note, beats), n in zip(sequence, frame_counts):
         f = frequency(note); attack = min(round(.01 * RATE), n // 2); release = attack
         for i in range(n):
-            if f == 0: value = 0.0
+            if f == 0: left = right = 0.0
             else:
                 env = min(1.0, i / max(1, attack), (n - i) / max(1, release))
                 primary = math.sin(2 * math.pi * f * i / RATE)
-                if harmony is None or harmony == 0: value = 0.22 * env * primary
-                else: value = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE))
-            out.extend(struct.pack("<h", round(value * 32767)))
+                if stereo:
+                    left = right = 0.22 * env * primary
+                    right = 0.22 * env * math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)
+                elif harmony is None or harmony == 0: left = 0.22 * env * primary; right = 0.0
+                else: left = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)); right = 0.0
+            out.extend(struct.pack("<h", round(left * 32767)))
+            if stereo: out.extend(struct.pack("<h", round(right * 32767)))
     return bytes(out)
 
-def write_wav(path, data, force=False):
+def write_wav(path, data, force=False, channels=1):
     if len(data) + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
     if not force:
         try: handle = open(path, "xb")
         except FileExistsError: raise FileExistsError(f"refusing to overwrite {path}; use --force")
     else: handle = open(path, "wb")
     with handle, wave.open(handle, "wb") as wav:
-        wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(RATE); wav.writeframes(data)
+        wav.setnchannels(channels); wav.setsampwidth(2); wav.setframerate(RATE); wav.writeframes(data)
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Generate gentle music for a meeting hold.")
     p.add_argument("sequence", nargs="?", default=PRESET, help="tokens such as C4:1 R:0.5 E4:2")
     p.add_argument("-o", "--output", default="hold-please.wav"); p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
     p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
+    p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
     a = p.parse_args(argv)
     try:
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony), a.force)
+        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 

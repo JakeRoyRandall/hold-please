@@ -12,6 +12,18 @@ class HoldPleaseTests(unittest.TestCase):
         rest_end = rest_start + round(0.1 * 60 / 120 * hold_please.RATE)
         self.assertEqual(max(map(abs, vals[rest_start:rest_end])), 0)
 
+    def test_stereo_interleaving_and_requirement(self):
+        seq = hold_please.parse_sequence("C4:0.2 R:0.1 G4:0.2")
+        data = hold_please.samples(seq, 120, 7, True)
+        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+            hold_please.write_wav(f.name, data, True, 2)
+            with wave.open(f.name, "rb") as w:
+                self.assertEqual((w.getnchannels(), w.getnframes()), (2, len(data)//4))
+                vals = struct.unpack("<%dh" % (len(data)//2), w.readframes(w.getnframes()))
+                self.assertNotEqual(vals[0::2], vals[1::2]); rest = round(0.2 * 60 / 120 * hold_please.RATE)
+                self.assertEqual(max(map(abs, vals[2*rest:2*(rest + round(0.1 * 60 / 120 * hold_please.RATE))])), 0)
+        self.assertRaises(ValueError, hold_please.samples, seq, 120, None, True)
+
     def test_wav_properties_peak_and_rest(self):
         data = hold_please.samples(hold_please.parse_sequence("C4:0.1 R:0.1"), 120)
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
