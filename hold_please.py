@@ -50,7 +50,8 @@ def repeat_sequence(sequence, repeat):
     if sum(duration for _, duration in expanded) > MAX_BEATS: raise ValueError("repeated sequence exceeds 120 beats")
     return expanded
 
-def preflight(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0):
+def preflight(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0, rate=RATE):
+    if rate not in (22050, 44100, 48000): raise ValueError("sample rate must be 22050, 44100, or 48000")
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
@@ -58,36 +59,36 @@ def preflight(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0
     if not math.isfinite(gain) or not 0 <= gain <= 1: raise ValueError("gain must be finite and between 0 and 1")
     if not all(math.isfinite(x) and x >= 0 for x in (fade_in, fade_out)): raise ValueError("fade durations must be finite and nonnegative")
     for note, _ in sequence:
-        if note != "R" and frequency(note, transpose) >= RATE / 2: raise ValueError("transposed note reaches the Nyquist limit")
-        if note != "R" and harmony is not None and frequency(note, transpose + harmony) >= RATE / 2: raise ValueError("transposed harmony reaches the Nyquist limit")
-    beat = 60.0 / tempo; source = [round(d * beat * RATE) for _, d in sequence]; adjusted = swing_sequence(sequence, swing) if swing is not None and swing != 0 else sequence; frames = [round(d * beat * RATE) for _, d in adjusted]
+        if note != "R" and frequency(note, transpose) >= rate / 2: raise ValueError("transposed note reaches the Nyquist limit")
+        if note != "R" and harmony is not None and frequency(note, transpose + harmony) >= rate / 2: raise ValueError("transposed harmony reaches the Nyquist limit")
+    beat = 60.0 / tempo; source = [round(d * beat * rate) for _, d in sequence]; adjusted = swing_sequence(sequence, swing) if swing is not None and swing != 0 else sequence; frames = [round(d * beat * rate) for _, d in adjusted]
     if swing is not None and swing != 0:
         for i in range(0, len(frames) - 1, 2): frames[i + 1] = source[i] + source[i + 1] - frames[i]
     if any(n < 1 for n in frames): raise ValueError("each duration must produce at least one audio frame")
-    total = sum(frames); duration = total / RATE
+    total = sum(frames); duration = total / rate
     if fade_in > duration or fade_out > duration: raise ValueError("fade duration cannot exceed audio duration")
     channels = 2 if stereo else 1
     if total * 2 * channels + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
     peak = max((max(frequency(note, transpose), frequency(note, transpose + harmony)) if harmony is not None else frequency(note, transpose) for note, _ in sequence if note != "R"), default=0.0)
     return frames, total, channels, peak
 
-def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0):
-    frame_counts, total_frames, channels, _ = preflight(sequence, tempo, harmony, stereo, swing, fade_in, fade_out, transpose, gain)
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0, rate=RATE):
+    frame_counts, total_frames, channels, _ = preflight(sequence, tempo, harmony, stereo, swing, fade_in, fade_out, transpose, gain, rate)
     out = bytearray()
     absolute = 0
-    fade_in_frames = round(fade_in * RATE); fade_out_frames = round(fade_out * RATE)
+    fade_in_frames = round(fade_in * rate); fade_out_frames = round(fade_out * rate)
     for (note, beats), n in zip(sequence, frame_counts):
-        f = frequency(note, transpose); attack = min(round(.01 * RATE), n // 2); release = attack
+        f = frequency(note, transpose); attack = min(round(.01 * rate), n // 2); release = attack
         for i in range(n):
             if f == 0: left = right = 0.0
             else:
                 env = min(1.0, i / max(1, attack), (n - i) / max(1, release))
-                primary = math.sin(2 * math.pi * f * i / RATE)
+                primary = math.sin(2 * math.pi * f * i / rate)
                 if stereo:
                     left = right = 0.22 * env * primary
-                    right = 0.22 * env * math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)
+                    right = 0.22 * env * math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / rate)
                 elif harmony is None or harmony == 0: left = 0.22 * env * primary; right = 0.0
-                else: left = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)); right = 0.0
+                else: left = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / rate)); right = 0.0
             gain_in = 1.0 if fade_in_frames == 0 else min(1.0, absolute / max(1, fade_in_frames))
             gain_out = 1.0 if fade_out_frames == 0 else min(1.0, (total_frames - 1 - absolute) / max(1, fade_out_frames))
             envelope = min(gain_in, gain_out); left *= envelope * gain; right *= envelope * gain
@@ -96,14 +97,14 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0
             absolute += 1
     return bytes(out)
 
-def write_wav(path, data, force=False, channels=1):
+def write_wav(path, data, force=False, channels=1, rate=RATE):
     if len(data) + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
     if not force:
         try: handle = open(path, "xb")
         except FileExistsError: raise FileExistsError(f"refusing to overwrite {path}; use --force")
     else: handle = open(path, "wb")
     with handle, wave.open(handle, "wb") as wav:
-        wav.setnchannels(channels); wav.setsampwidth(2); wav.setframerate(RATE); wav.writeframes(data)
+        wav.setnchannels(channels); wav.setsampwidth(2); wav.setframerate(rate); wav.writeframes(data)
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Generate gentle music for a meeting hold.")
@@ -116,7 +117,7 @@ def main(argv=None):
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     p.add_argument("--transpose", type=int, default=0)
     p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
-    p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing")
+    p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--sample-rate", type=int, choices=(22050, 44100, 48000), default=RATE); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing")
     a = p.parse_args(argv)
     try:
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
@@ -131,10 +132,10 @@ def main(argv=None):
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
         score = repeat_sequence(parse_sequence(sequence_text), a.repeat)
         if a.inspect:
-            _, frames, channels, peak = preflight(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain)
-            print(f"duration_seconds={frames / RATE:.6f}\nframes={frames}\nchannels={channels}\nestimated_wav_bytes={frames * channels * 2 + 44}\npeak_frequency_hz={peak:.6f}")
+            _, frames, channels, peak = preflight(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate)
+            print(f"sample_rate={a.sample_rate}\nduration_seconds={frames / a.sample_rate:.6f}\nframes={frames}\nchannels={channels}\nestimated_wav_bytes={frames * channels * 2 + 44}\npeak_frequency_hz={peak:.6f}")
             return
-        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain), a.force, 2 if a.stereo else 1)
+        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate), a.force, 2 if a.stereo else 1, a.sample_rate)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 

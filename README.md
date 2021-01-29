@@ -33,3 +33,5 @@ Use `--repeat N` for 1 to16 score repetitions. The expanded score must fit the12
 Use `--gain 0.5` to attenuate every channel before PCM quantization. Gain must be finite and between0 and1; zero produces silence and one preserves the original output. Gain combines with global fades.
 
 Use `--inspect` to report planned duration, frames, channels, estimated WAV size, and highest voice frequency without PCM allocation or file output. Inspection shares the same validation and frame planning as rendering, including repeats, swing, fades, gain, and transposition.
+
+Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillator pitch, envelopes, WAV headers, and Nyquist validation use the selected rate. Inspect output includes sample_rate.

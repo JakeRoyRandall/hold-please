@@ -122,5 +122,19 @@ class HoldPleaseTests(unittest.TestCase):
             self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--fade-in", "2"])
             _, _, _, peak = hold_please.preflight(hold_please.parse_sequence("A4:1"), 120, harmony=-12)
             self.assertAlmostEqual(peak, hold_please.frequency("A4"), places=5)
+    def test_sample_rates_headers_frames_and_nyquist(self):
+        seq = hold_please.parse_sequence("C4:0.2")
+        for rate in (22050, 44100, 48000):
+            data = hold_please.samples(seq, 120, rate=rate)
+            with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+                hold_please.write_wav(f.name, data, True, 1, rate)
+                with wave.open(f.name, "rb") as w: self.assertEqual((w.getframerate(), w.getnframes()), (rate, len(data)//2))
+        self.assertRaises(ValueError, hold_please.samples, hold_please.parse_sequence("B7:1"), 120, transpose=24, harmony=12, rate=22050)
+    def test_sample_rate_pitch_tracks_selected_clock(self):
+        for rate in (22050, 44100, 48000):
+            data = hold_please.samples(hold_please.parse_sequence("A4:1"), 120, rate=rate)
+            vals = struct.unpack("<%dh" % (len(data)//2), data); crossings = sum(a < 0 <= b for a,b in zip(vals, vals[1:]))
+            self.assertAlmostEqual(crossings / (len(vals) / rate), 440, delta=8)
+        self.assertRaises(ValueError, hold_please.samples, hold_please.parse_sequence("A4:1"), 120, rate=12345)
 
 if __name__ == "__main__": unittest.main()
