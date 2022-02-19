@@ -1,4 +1,4 @@
-import os, struct, tempfile, unittest, wave
+import json, os, struct, subprocess, sys, tempfile, unittest, wave
 import hold_please
 
 class HoldPleaseTests(unittest.TestCase):
@@ -135,6 +135,15 @@ class HoldPleaseTests(unittest.TestCase):
             self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--fade-in", "2"])
             _, _, _, peak = hold_please.preflight(hold_please.parse_sequence("A4:1"), 120, harmony=-12)
             self.assertAlmostEqual(peak, hold_please.frequency("A4"), places=5)
+    def test_inspect_json_is_pipeable_and_does_not_write(self):
+        with tempfile.TemporaryDirectory() as d:
+            output_path = os.path.join(d, "metadata.wav")
+            result = subprocess.run([sys.executable, "hold_please.py", "A4:0.2", "--inspect-json", "--sample-rate", "22050", "-o", output_path], capture_output=True, text=True, check=True)
+            metadata = json.loads(result.stdout)
+            self.assertEqual(set(metadata), {"sample_rate", "duration_seconds", "frames", "channels", "bytes", "peak_frequency_hz"})
+            self.assertEqual((metadata["sample_rate"], metadata["channels"]), (22050, 1)); self.assertFalse(os.path.exists(output_path)); self.assertEqual(metadata["bytes"], metadata["frames"] * 2 + 44)
+            conflict = subprocess.run([sys.executable, "hold_please.py", "A4:0.2", "--inspect", "--inspect-json"], capture_output=True, text=True)
+            self.assertNotEqual(conflict.returncode, 0); self.assertIn("mutually exclusive", conflict.stderr)
     def test_sample_rates_headers_frames_and_nyquist(self):
         seq = hold_please.parse_sequence("C4:0.2")
         for rate in (22050, 44100, 48000):

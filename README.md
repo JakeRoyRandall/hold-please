@@ -37,3 +37,5 @@ Use `--inspect` to report planned duration, frames, channels, estimated WAV size
 Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillator pitch, envelopes, WAV headers, and Nyquist validation use the selected rate. Inspect output includes sample_rate.
 
 `--normalize` scales the rendered non-silent PCM to the 16-bit peak after gain and fades. Stereo channels share one scale factor to preserve their balance. Silence stays silent; without the option output is unchanged. Normalization overrides absolute gain loudness, so use gain zero for silence.
+
+`--inspect-json` prints numeric metadata as JSON without rendering PCM or creating a file: sample_rate, duration_seconds, frames, channels, bytes (including WAV header), peak_frequency_hz. It is mutually exclusive with text `--inspect`.

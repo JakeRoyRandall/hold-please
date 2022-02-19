@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A tiny, bounded meeting-hold music generator using only the standard library."""
-import argparse, math, os, re, struct, sys, wave
+import argparse, json, math, os, re, struct, sys, wave
 from array import array
 
 RATE = 44100
@@ -131,10 +131,11 @@ def main(argv=None):
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     p.add_argument("--transpose", type=int, default=0)
     p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
-    p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--sample-rate", type=int, choices=(22050, 44100, 48000), default=RATE); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing")
+    p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--sample-rate", type=int, choices=(22050, 44100, 48000), default=RATE); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing"); p.add_argument("--inspect-json", action="store_true", help="print WAV metadata as JSON without rendering or writing")
     p.add_argument("--normalize", action="store_true", help="normalize non-silent PCM to the available 16-bit peak")
     a = p.parse_args(argv)
     try:
+        if a.inspect and a.inspect_json: raise ValueError("--inspect and --inspect-json are mutually exclusive")
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
         sequence_text = a.sequence if a.sequence is not None else PRESET
         if a.sequence_file:
@@ -146,8 +147,11 @@ def main(argv=None):
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
         score = repeat_sequence(parse_sequence(sequence_text), a.repeat)
-        if a.inspect:
+        if a.inspect or a.inspect_json:
             _, frames, channels, peak = preflight(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate)
+            if a.inspect_json:
+                print(json.dumps({"sample_rate": a.sample_rate, "duration_seconds": frames / a.sample_rate, "frames": frames, "channels": channels, "bytes": frames * channels * 2 + 44, "peak_frequency_hz": peak}, separators=(",", ":")))
+                return
             print(f"sample_rate={a.sample_rate}\nduration_seconds={frames / a.sample_rate:.6f}\nframes={frames}\nchannels={channels}\nestimated_wav_bytes={frames * channels * 2 + 44}\npeak_frequency_hz={peak:.6f}")
             return
         write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate, a.normalize), a.force, 2 if a.stereo else 1, a.sample_rate)
