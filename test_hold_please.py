@@ -103,6 +103,16 @@ class HoldPleaseTests(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as f: f.write("# comments only\n\n")
             self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", path, "-o", os.path.join(d, "empty.wav")])
             self.assertRaises(ValueError, hold_please.parse_sequence, "C4:0.1 # inline remains strict")
+    def test_stdout_wav_is_binary_only_and_output_conflicts(self):
+        result = subprocess.run([sys.executable, "hold_please.py", "A4:0.05", "--stdout"], capture_output=True, check=True)
+        self.assertTrue(result.stdout.startswith(b"RIFF")); self.assertIn(b"wrote WAV to stdout", result.stderr)
+        with wave.open(__import__('io').BytesIO(result.stdout), "rb") as wav: self.assertEqual((wav.getnchannels(), wav.getsampwidth()), (1, 2))
+        conflict = subprocess.run([sys.executable, "hold_please.py", "A4:0.05", "--stdout", "-o", "out.wav"], capture_output=True)
+        self.assertNotEqual(conflict.returncode, 0); self.assertIn(b"not allowed with argument", conflict.stderr)
+        inspect_conflict = subprocess.run([sys.executable, "hold_please.py", "A4:0.05", "--stdout", "--inspect"], capture_output=True)
+        self.assertNotEqual(inspect_conflict.returncode, 0); self.assertIn(b"cannot be combined", inspect_conflict.stderr)
+        empty_output = subprocess.run([sys.executable, "hold_please.py", "A4:0.05", "-o", ""], capture_output=True)
+        self.assertNotEqual(empty_output.returncode, 0)
     def test_repeat_expands_frames_and_preserves_rests(self):
         seq = hold_please.parse_sequence("C4:0.1 R:0.1")
         self.assertEqual(len(hold_please.repeat_sequence(seq, 3)), 6)

@@ -41,3 +41,5 @@ Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillat
 `--inspect-json` prints numeric metadata as JSON without rendering PCM or creating a file: sample_rate, duration_seconds, frames, channels, bytes (including WAV header), peak_frequency_hz. It is mutually exclusive with text `--inspect`.
 
 Sequence files may include blank lines and whole-line # comments, including Unicode comments. Inline comments remain invalid. Files retain the 64 KiB UTF-8 limit; comments-only input is rejected as an empty score.
+
+`--stdout` writes binary WAV to stdout with confirmation on stderr. It cannot combine with explicit output paths, --force, or either inspect mode. Broken pipes exit quietly. Default file output remains hold-please.wav.

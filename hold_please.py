@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """A tiny, bounded meeting-hold music generator using only the standard library."""
-import argparse, json, math, os, re, struct, sys, wave
+import argparse, io, json, math, os, re, struct, sys, wave
 from array import array
 
 RATE = 44100
@@ -120,11 +120,20 @@ def write_wav(path, data, force=False, channels=1, rate=RATE):
     with handle, wave.open(handle, "wb") as wav:
         wav.setnchannels(channels); wav.setsampwidth(2); wav.setframerate(rate); wav.writeframes(data)
 
+def write_wav_stdout(data, channels=1, rate=RATE):
+    if len(data) + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(channels); wav.setsampwidth(2); wav.setframerate(rate); wav.writeframes(data)
+    sys.stdout.buffer.write(buffer.getvalue())
+    sys.stdout.buffer.flush()
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Generate gentle music for a meeting hold.")
     p.add_argument("sequence", nargs="?", default=None, help="tokens such as C4:1 R:0.5 E4:2")
     p.add_argument("--sequence-file", help="read note/rest tokens as strict UTF-8 from a file (max 64 KiB)")
-    p.add_argument("-o", "--output", default="hold-please.wav"); p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
+    output_group = p.add_mutually_exclusive_group(); output_group.add_argument("-o", "--output"); output_group.add_argument("--stdout", action="store_true", help="write binary WAV to stdout")
+    p.add_argument("--tempo", type=float, default=96); p.add_argument("--force", action="store_true")
     p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
     p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
     p.add_argument("--swing", type=float, default=None, help="redistribute consecutive pair durations by 0..0.75")
@@ -135,7 +144,9 @@ def main(argv=None):
     p.add_argument("--normalize", action="store_true", help="normalize non-silent PCM to the available 16-bit peak")
     a = p.parse_args(argv)
     try:
+        if a.stdout and a.force: raise ValueError("--stdout cannot be combined with --force")
         if a.inspect and a.inspect_json: raise ValueError("--inspect and --inspect-json are mutually exclusive")
+        if a.stdout and (a.inspect or a.inspect_json): raise ValueError("--stdout cannot be combined with inspect modes")
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
         sequence_text = a.sequence if a.sequence is not None else PRESET
         if a.sequence_file:
@@ -155,8 +166,15 @@ def main(argv=None):
                 return
             print(f"sample_rate={a.sample_rate}\nduration_seconds={frames / a.sample_rate:.6f}\nframes={frames}\nchannels={channels}\nestimated_wav_bytes={frames * channels * 2 + 44}\npeak_frequency_hz={peak:.6f}")
             return
-        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate, a.normalize), a.force, 2 if a.stereo else 1, a.sample_rate)
+        data = samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate, a.normalize)
+        if a.stdout:
+            write_wav_stdout(data, 2 if a.stereo else 1, a.sample_rate); print("wrote WAV to stdout", file=sys.stderr)
+        else:
+            output = a.output if a.output is not None else "hold-please.wav"; write_wav(output, data, a.force, 2 if a.stereo else 1, a.sample_rate); print(f"wrote {output}")
+    except BrokenPipeError:
+        try: sys.stdout = open(os.devnull, "w")
+        except OSError: pass
+        return
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
-    print(f"wrote {a.output}")
 
 if __name__ == "__main__": main()
