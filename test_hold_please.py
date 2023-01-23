@@ -64,5 +64,13 @@ class HoldPleaseTests(unittest.TestCase):
             hold_please.main(["C4:1 D4:1", "--swing", ".5", "-o", mono])
             hold_please.main(["C4:1 D4:1", "--swing", ".5", "--harmony", "7", "--stereo", "-o", stereo])
             with wave.open(stereo, "rb") as w: self.assertEqual(w.getnchannels(), 2)
+    def test_fades_ramp_pcm_and_validate(self):
+        seq = hold_please.parse_sequence("C4:0.2 D4:0.2")
+        data = hold_please.samples(seq, 120, fade_in=.05, fade_out=.05)
+        vals = struct.unpack("<%dh" % (len(data)//2), data)
+        self.assertEqual(vals[0], 0); self.assertEqual(vals[-1], 0); self.assertGreater(max(map(abs, vals[1000:3000])), abs(vals[100]))
+        stereo = hold_please.samples(seq, 120, 7, True, None, .05, .05); pairs = struct.unpack("<%dh" % (len(stereo)//2), stereo)
+        self.assertEqual(pairs[0], pairs[1]); self.assertLessEqual(max(map(abs, pairs)), 32767)
+        self.assertRaises(ValueError, hold_please.samples, seq, 120, fade_in=float("nan")); self.assertRaises(ValueError, hold_please.samples, seq, 120, fade_out=1.0)
 
 if __name__ == "__main__": unittest.main()

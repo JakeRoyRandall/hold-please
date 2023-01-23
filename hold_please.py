@@ -44,10 +44,11 @@ def swing_sequence(sequence, swing):
         adjusted[i + 1] = (sequence[i + 1][0], second - transfer)
     return adjusted
 
-def samples(sequence, tempo, harmony=None, stereo=False, swing=None):
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
+    if not all(math.isfinite(x) and x >= 0 for x in (fade_in, fade_out)): raise ValueError("fade durations must be finite and nonnegative")
     beat = 60.0 / tempo
     source_counts = [round(beats * beat * RATE) for _, beats in sequence]
     sequence = swing_sequence(sequence, swing) if swing is not None and swing != 0 else sequence
@@ -55,9 +56,13 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None):
     if swing is not None and swing != 0:
         for i in range(0, len(frame_counts) - 1, 2): frame_counts[i + 1] = source_counts[i] + source_counts[i + 1] - frame_counts[i]
     if any(n < 1 for n in frame_counts): raise ValueError("each duration must produce at least one audio frame")
+    total_frames = sum(frame_counts); duration = total_frames / RATE
+    if fade_in > duration or fade_out > duration: raise ValueError("fade duration cannot exceed audio duration")
     channels = 2 if stereo else 1
     if sum(frame_counts) * 2 * channels + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
     out = bytearray()
+    absolute = 0
+    fade_in_frames = round(fade_in * RATE); fade_out_frames = round(fade_out * RATE)
     for (note, beats), n in zip(sequence, frame_counts):
         f = frequency(note); attack = min(round(.01 * RATE), n // 2); release = attack
         for i in range(n):
@@ -70,8 +75,12 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None):
                     right = 0.22 * env * math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)
                 elif harmony is None or harmony == 0: left = 0.22 * env * primary; right = 0.0
                 else: left = 0.11 * env * (primary + math.sin(2 * math.pi * f * 2 ** (harmony / 12) * i / RATE)); right = 0.0
+            gain_in = 1.0 if fade_in_frames == 0 else min(1.0, absolute / max(1, fade_in_frames))
+            gain_out = 1.0 if fade_out_frames == 0 else min(1.0, (total_frames - 1 - absolute) / max(1, fade_out_frames))
+            gain = min(gain_in, gain_out); left *= gain; right *= gain
             out.extend(struct.pack("<h", round(left * 32767)))
             if stereo: out.extend(struct.pack("<h", round(right * 32767)))
+            absolute += 1
     return bytes(out)
 
 def write_wav(path, data, force=False, channels=1):
@@ -90,11 +99,12 @@ def main(argv=None):
     p.add_argument("--harmony", type=int, default=None, help="mix a second voice -12..12 semitones above/below the melody")
     p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
     p.add_argument("--swing", type=float, default=None, help="redistribute consecutive pair durations by 0..0.75")
+    p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
     a = p.parse_args(argv)
     try:
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing), a.force, 2 if a.stereo else 1)
+        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 
