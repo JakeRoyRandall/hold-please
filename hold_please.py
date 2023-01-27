@@ -26,13 +26,13 @@ def parse_sequence(text):
     if sum(d for _, d in result) > MAX_BEATS: raise ValueError(f"sequence exceeds {MAX_BEATS} beats")
     return result
 
-def frequency(note):
+def frequency(note, transpose=0):
     if note == "R": return 0.0
     m = re.fullmatch(r"([A-G])([#b]?)([2-7])", note)
     base = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}[m.group(1)]
     accidental = {'': 0, '#': 1, 'b': -1}[m.group(2)]
     midi = 12 * (int(m.group(3)) + 1) + base + accidental
-    return 440.0 * 2 ** ((midi - 69) / 12)
+    return 440.0 * 2 ** ((midi - 69 + transpose) / 12)
 
 def swing_sequence(sequence, swing):
     if not 0 <= swing <= .75: raise ValueError("swing must be between 0 and 0.75")
@@ -44,10 +44,14 @@ def swing_sequence(sequence, swing):
         adjusted[i + 1] = (sequence[i + 1][0], second - transfer)
     return adjusted
 
-def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0):
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0):
     if not math.isfinite(tempo) or not 40 <= tempo <= 240: raise ValueError("tempo must be between 40 and 240 BPM")
     if harmony is not None and (not isinstance(harmony, int) or isinstance(harmony, bool) or not -12 <= harmony <= 12): raise ValueError("harmony must be an integer from -12 to 12")
     if stereo and harmony is None: raise ValueError("stereo output requires --harmony")
+    if not isinstance(transpose, int) or isinstance(transpose, bool) or not -24 <= transpose <= 24: raise ValueError("transpose must be an integer from -24 to 24")
+    for note, _ in sequence:
+        if note != "R" and frequency(note, transpose) >= RATE / 2: raise ValueError("transposed note reaches the Nyquist limit")
+        if note != "R" and harmony is not None and frequency(note, transpose + harmony) >= RATE / 2: raise ValueError("transposed harmony reaches the Nyquist limit")
     if not all(math.isfinite(x) and x >= 0 for x in (fade_in, fade_out)): raise ValueError("fade durations must be finite and nonnegative")
     beat = 60.0 / tempo
     source_counts = [round(beats * beat * RATE) for _, beats in sequence]
@@ -64,7 +68,7 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0
     absolute = 0
     fade_in_frames = round(fade_in * RATE); fade_out_frames = round(fade_out * RATE)
     for (note, beats), n in zip(sequence, frame_counts):
-        f = frequency(note); attack = min(round(.01 * RATE), n // 2); release = attack
+        f = frequency(note, transpose); attack = min(round(.01 * RATE), n // 2); release = attack
         for i in range(n):
             if f == 0: left = right = 0.0
             else:
@@ -100,11 +104,12 @@ def main(argv=None):
     p.add_argument("--stereo", action="store_true", help="put melody left and harmony right (requires --harmony)")
     p.add_argument("--swing", type=float, default=None, help="redistribute consecutive pair durations by 0..0.75")
     p.add_argument("--fade-in", type=float, default=0.0); p.add_argument("--fade-out", type=float, default=0.0)
+    p.add_argument("--transpose", type=int, default=0)
     a = p.parse_args(argv)
     try:
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
-        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out), a.force, 2 if a.stereo else 1)
+        write_wav(a.output, samples(parse_sequence(a.sequence), a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose), a.force, 2 if a.stereo else 1)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 

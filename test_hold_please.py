@@ -72,5 +72,16 @@ class HoldPleaseTests(unittest.TestCase):
         stereo = hold_please.samples(seq, 120, 7, True, None, .05, .05); pairs = struct.unpack("<%dh" % (len(stereo)//2), stereo)
         self.assertEqual(pairs[0], pairs[1]); self.assertLessEqual(max(map(abs, pairs)), 32767)
         self.assertRaises(ValueError, hold_please.samples, seq, 120, fade_in=float("nan")); self.assertRaises(ValueError, hold_please.samples, seq, 120, fade_out=1.0)
+    def test_transpose_changes_frequency_and_cli_validates(self):
+        self.assertAlmostEqual(hold_please.frequency("A4", 12), 880.0, places=5)
+        seq = hold_please.parse_sequence("A4:0.2 R:0.1")
+        self.assertNotEqual(hold_please.samples(seq, 120), hold_please.samples(seq, 120, transpose=12))
+        self.assertEqual(hold_please.samples([("R", .2)], 120), hold_please.samples([("R", .2)], 120, transpose=-24))
+        self.assertRaises(ValueError, hold_please.samples, seq, 120, transpose=25)
+        self.assertRaises(SystemExit, hold_please.main, ["A4:1", "--transpose", "25", "-o", "/tmp/transpose.wav"])
+    def test_transpose_nyquist_guard_and_valid_edge(self):
+        with self.assertRaises(ValueError): hold_please.samples(hold_please.parse_sequence("B7:1"), 120, harmony=12, transpose=24)
+        data = hold_please.samples(hold_please.parse_sequence("A6:0.1"), 120, harmony=12, transpose=24)
+        self.assertGreater(len(data), 0)
 
 if __name__ == "__main__": unittest.main()

@@ -23,3 +23,5 @@ Standalone tests: `python3 -m unittest -v`. Git author dates are deliberately as
 `--swing S` redistributes each consecutive pair by moving up to `S` times the shorter duration from the second item to the first (`0..0.75`). Pair totals and total audio frames remain constant, rests participate like notes, and an odd final item is unchanged. The default without `--swing` produces the original bytes.
 
 Use `--fade-in SECONDS` and `--fade-out SECONDS` for global linear volume ramps. Both durations must be finite, nonnegative, and no longer than the generated audio. Overlapping fades use the lower gain; stereo channels share the same ramp. Defaults preserve the original PCM bytes and frame count.
+
+Use `--transpose SEMITONES` with an integer from -24 to 24 to shift both voices together; rests stay silent. Melody and harmony pitches at or above the Nyquist limit are rejected before audio allocation. The default zero shift preserves PCM output.
