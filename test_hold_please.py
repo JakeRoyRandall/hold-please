@@ -109,5 +109,18 @@ class HoldPleaseTests(unittest.TestCase):
         self.assertGreater(max(map(abs, full_vals)), max(map(abs, half_vals))); self.assertEqual(hold_please.samples(seq, 120, gain=0), b"\0" * len(full))
         stereo = hold_please.samples(seq, 120, harmony=7, stereo=True, gain=.5); self.assertGreater(max(map(abs, struct.unpack("<%dh" % (len(stereo)//2), stereo))), 0)
         for bad in (-.01, 1.01, float("nan"), float("inf")): self.assertRaises(ValueError, hold_please.samples, seq, 120, gain=bad)
+    def test_inspect_matches_wav_without_creating_output(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "inspect.wav"); score = hold_please.repeat_sequence(hold_please.parse_sequence("C4:0.2 R:0.1"), 2)
+            _, frames, channels, _ = hold_please.preflight(score, 120, harmony=7, stereo=True, swing=.25)
+            hold_please.main(["C4:0.2 R:0.1", "--repeat", "2", "--tempo", "120", "--swing", ".25", "--harmony", "7", "--stereo", "-o", path])
+            with wave.open(path, "rb") as w: self.assertEqual((w.getnframes(), w.getnchannels()), (frames, channels))
+            inspect_path = os.path.join(d, "no-write.wav"); self.assertFalse(os.path.exists(inspect_path)); hold_please.main(["C4:0.2 R:0.1", "--inspect", "-o", inspect_path]); self.assertFalse(os.path.exists(inspect_path))
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--stereo"])
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--transpose", "25"])
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--gain", "nan"])
+            self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--inspect", "--fade-in", "2"])
+            _, _, _, peak = hold_please.preflight(hold_please.parse_sequence("A4:1"), 120, harmony=-12)
+            self.assertAlmostEqual(peak, hold_please.frequency("A4"), places=5)
 
 if __name__ == "__main__": unittest.main()
