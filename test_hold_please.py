@@ -109,6 +109,19 @@ class HoldPleaseTests(unittest.TestCase):
         self.assertGreater(max(map(abs, full_vals)), max(map(abs, half_vals))); self.assertEqual(hold_please.samples(seq, 120, gain=0), b"\0" * len(full))
         stereo = hold_please.samples(seq, 120, harmony=7, stereo=True, gain=.5); self.assertGreater(max(map(abs, struct.unpack("<%dh" % (len(stereo)//2), stereo))), 0)
         for bad in (-.01, 1.01, float("nan"), float("inf")): self.assertRaises(ValueError, hold_please.samples, seq, 120, gain=bad)
+    def test_normalize_reaches_peak_and_preserves_silence(self):
+        seq = hold_please.parse_sequence("C4:0.2 R:0.1")
+        raw = hold_please.samples(seq, 120, gain=.2); normalized = hold_please.samples(seq, 120, gain=.2, normalize=True)
+        raw_values = struct.unpack("<%dh" % (len(raw)//2), raw); normalized_values = struct.unpack("<%dh" % (len(normalized)//2), normalized)
+        self.assertLess(max(map(abs, raw_values)), 32767); self.assertEqual(max(map(abs, normalized_values)), 32767)
+        silence = hold_please.samples(hold_please.parse_sequence("R:1"), 120, normalize=True)
+        self.assertEqual(silence, b"\0" * (hold_please.RATE // 2 * 2))
+        self.assertEqual(hold_please.samples(seq, 120), hold_please.samples(seq, 120, normalize=False))
+    def test_normalize_preserves_stereo_shape_at_selected_rate(self):
+        data = hold_please.samples(hold_please.parse_sequence("C4:0.2"), 120, harmony=7, stereo=True, gain=.2, rate=22050, normalize=True)
+        values = struct.unpack("<%dh" % (len(data)//2), data)
+        self.assertEqual(len(values) % 2, 0); self.assertEqual(max(map(abs, values)), 32767)
+        self.assertGreater(max(map(abs, values[0::2])), 0); self.assertGreater(max(map(abs, values[1::2])), 0)
     def test_inspect_matches_wav_without_creating_output(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "inspect.wav"); score = hold_please.repeat_sequence(hold_please.parse_sequence("C4:0.2 R:0.1"), 2)

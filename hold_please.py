@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A tiny, bounded meeting-hold music generator using only the standard library."""
-import argparse, math, os, re, struct, wave
+import argparse, math, os, re, struct, sys, wave
+from array import array
 
 RATE = 44100
 MAX_BEATS = 120
@@ -72,7 +73,7 @@ def preflight(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0
     peak = max((max(frequency(note, transpose), frequency(note, transpose + harmony)) if harmony is not None else frequency(note, transpose) for note, _ in sequence if note != "R"), default=0.0)
     return frames, total, channels, peak
 
-def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0, rate=RATE):
+def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0, fade_out=0.0, transpose=0, gain=1.0, rate=RATE, normalize=False):
     frame_counts, total_frames, channels, _ = preflight(sequence, tempo, harmony, stereo, swing, fade_in, fade_out, transpose, gain, rate)
     out = bytearray()
     absolute = 0
@@ -95,7 +96,20 @@ def samples(sequence, tempo, harmony=None, stereo=False, swing=None, fade_in=0.0
             out.extend(struct.pack("<h", round(left * 32767)))
             if stereo: out.extend(struct.pack("<h", round(right * 32767)))
             absolute += 1
-    return bytes(out)
+    data = bytes(out)
+    if normalize and data:
+        values = array('h')
+        values.frombytes(data)
+        if sys.byteorder != 'little':
+            values.byteswap()
+        peak = max(map(abs, values), default=0)
+        if peak:
+            for index, value in enumerate(values):
+                values[index] = max(-32768, min(32767, round(value * 32767 / peak)))
+            if sys.byteorder != 'little':
+                values.byteswap()
+            data = values.tobytes()
+    return data
 
 def write_wav(path, data, force=False, channels=1, rate=RATE):
     if len(data) + 44 > MAX_BYTES: raise ValueError("output exceeds 10 MB limit")
@@ -118,6 +132,7 @@ def main(argv=None):
     p.add_argument("--transpose", type=int, default=0)
     p.add_argument("--repeat", type=int, default=1, help="repeat the score 1..16 times")
     p.add_argument("--gain", type=float, default=1.0, help="scale all channels from 0 to 1"); p.add_argument("--sample-rate", type=int, choices=(22050, 44100, 48000), default=RATE); p.add_argument("--inspect", action="store_true", help="print WAV metadata without rendering or writing")
+    p.add_argument("--normalize", action="store_true", help="normalize non-silent PCM to the available 16-bit peak")
     a = p.parse_args(argv)
     try:
         if a.sequence_file and a.sequence is not None: raise ValueError("sequence and --sequence-file are mutually exclusive")
@@ -135,7 +150,7 @@ def main(argv=None):
             _, frames, channels, peak = preflight(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate)
             print(f"sample_rate={a.sample_rate}\nduration_seconds={frames / a.sample_rate:.6f}\nframes={frames}\nchannels={channels}\nestimated_wav_bytes={frames * channels * 2 + 44}\npeak_frequency_hz={peak:.6f}")
             return
-        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate), a.force, 2 if a.stereo else 1, a.sample_rate)
+        write_wav(a.output, samples(score, a.tempo, a.harmony, a.stereo, a.swing, a.fade_in, a.fade_out, a.transpose, a.gain, a.sample_rate, a.normalize), a.force, 2 if a.stereo else 1, a.sample_rate)
     except (ValueError, FileExistsError, OSError) as e: p.error(str(e))
     print(f"wrote {a.output}")
 

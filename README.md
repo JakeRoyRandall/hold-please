@@ -35,3 +35,5 @@ Use `--gain 0.5` to attenuate every channel before PCM quantization. Gain must b
 Use `--inspect` to report planned duration, frames, channels, estimated WAV size, and highest voice frequency without PCM allocation or file output. Inspection shares the same validation and frame planning as rendering, including repeats, swing, fades, gain, and transposition.
 
 Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillator pitch, envelopes, WAV headers, and Nyquist validation use the selected rate. Inspect output includes sample_rate.
+
+`--normalize` scales the rendered non-silent PCM to the 16-bit peak after gain and fades. Stereo channels share one scale factor to preserve their balance. Silence stays silent; without the option output is unchanged. Normalization overrides absolute gain loudness, so use gain zero for silence.
