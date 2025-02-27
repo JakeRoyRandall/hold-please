@@ -39,3 +39,5 @@ Choose `--sample-rate 22050`, `44100` (default), or `48000` Hz. Timing, oscillat
 `--normalize` scales the rendered non-silent PCM to the 16-bit peak after gain and fades. Stereo channels share one scale factor to preserve their balance. Silence stays silent; without the option output is unchanged. Normalization overrides absolute gain loudness, so use gain zero for silence.
 
 `--inspect-json` prints numeric metadata as JSON without rendering PCM or creating a file: sample_rate, duration_seconds, frames, channels, bytes (including WAV header), peak_frequency_hz. It is mutually exclusive with text `--inspect`.
+
+Sequence files may include blank lines and whole-line # comments, including Unicode comments. Inline comments remain invalid. Files retain the 64 KiB UTF-8 limit; comments-only input is rejected as an empty score.

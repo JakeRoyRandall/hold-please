@@ -144,6 +144,7 @@ def main(argv=None):
             if len(raw) > 65536: raise ValueError("sequence file exceeds 64 KiB")
             try: sequence_text = raw.decode("utf-8")
             except UnicodeDecodeError as error: raise ValueError("sequence file is not valid UTF-8") from error
+            sequence_text = " ".join(line for line in sequence_text.splitlines() if line.strip() and not line.lstrip().startswith("#"))
         if a.harmony is not None and not -12 <= a.harmony <= 12: raise ValueError("harmony must be an integer from -12 to 12")
         if a.swing is not None and (not math.isfinite(a.swing) or not 0 <= a.swing <= .75): raise ValueError("swing must be between 0 and 0.75")
         score = repeat_sequence(parse_sequence(sequence_text), a.repeat)

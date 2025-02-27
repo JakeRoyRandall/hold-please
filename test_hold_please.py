@@ -95,6 +95,14 @@ class HoldPleaseTests(unittest.TestCase):
             self.assertRaises(SystemExit, hold_please.main, ["C4:1", "--sequence-file", path, "-o", os.path.join(d, "conflict.wav")])
             self.assertRaises(SystemExit, hold_please.main, [hold_please.PRESET, "--sequence-file", path, "-o", os.path.join(d, "preset-conflict.wav")])
             self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", os.path.join(d, "missing"), "-o", os.path.join(d, "missing.wav")])
+    def test_sequence_file_ignores_blank_and_whole_line_comments(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "commented.txt"); out = os.path.join(d, "commented.wav")
+            with open(path, "w", encoding="utf-8", newline="") as f: f.write("# Café planning\r\n\r\n C4:0.1\r\n# another note\nR:0.1\n")
+            hold_please.main(["--sequence-file", path, "-o", out]); self.assertTrue(os.path.exists(out))
+            with open(path, "w", encoding="utf-8") as f: f.write("# comments only\n\n")
+            self.assertRaises(SystemExit, hold_please.main, ["--sequence-file", path, "-o", os.path.join(d, "empty.wav")])
+            self.assertRaises(ValueError, hold_please.parse_sequence, "C4:0.1 # inline remains strict")
     def test_repeat_expands_frames_and_preserves_rests(self):
         seq = hold_please.parse_sequence("C4:0.1 R:0.1")
         self.assertEqual(len(hold_please.repeat_sequence(seq, 3)), 6)
